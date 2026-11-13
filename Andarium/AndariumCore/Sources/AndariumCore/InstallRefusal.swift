@@ -32,14 +32,11 @@ public enum InstallRefusal: Equatable, Sendable {
 }
 
 extension InstallRefusal {
-    /// The one type the file picker offers: what the system calls a file
-    /// that ends in .apk. No Info.plist declaration is needed. With none, the
-    /// type is the dynamic one every .apk file also gets; if the system or
-    /// another application declares .apk, the call returns that type and the
-    /// files carry it too, so the picker and the files always agree. Other
-    /// extensions (.apks, .xapk, .apkm, .zip, none) are dimmed, and
-    /// `init(fileName:)` still refuses a mislabelled file.
+    /// File providers may report an APK as generic data, ZIP or a custom
+    /// type. Filtering by a derived APK UTI can disable valid files in Files.
+    /// Accept data here; installPicked validates the .apk extension before
+    /// opening or sending anything, and Android validates the package.
     public static var pickerType: UTType {
-        UTType(filenameExtension: "apk", conformingTo: .data) ?? .data
+        .data
     }
 }

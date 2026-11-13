@@ -28,40 +28,19 @@ struct InstallRefusalTests {
             == "Apps that come in several files can\u{2019}t be installed yet. Choose a single .apk file.")
     }
 
-    /// The type the system gives a file name, as the picker's rows have it.
-    private func type(of name: String) -> UTType? {
-        UTType(filenameExtension: URL(fileURLWithPath: name).pathExtension)
-    }
-
-    @Test func thePickerOffersOnlyTheTypeOfAnApk() {
+    @Test func thePickerAcceptsGenericAndArchiveProviderTypes() {
         let picker = InstallRefusal.pickerType
-        // Not everything: an unfiltered picker is what this type replaces.
-        #expect(picker != .item && picker != .data && picker != .archive)
-        for name in ["a.apk", "A.APK", "my app.Apk"] {
-            #expect(type(of: name)?.conforms(to: picker) == true, "\(name)")
+        #expect(picker == .data)
+        for type in [UTType.data, .archive, .zip] {
+            #expect(type.conforms(to: picker))
         }
-        // The system or an application that declares .apk changes the
-        // identifier, never the agreement between the picker and the files.
-        #expect(UTType(filenameExtension: "apk", conformingTo: .data) == picker)
+        #expect(!UTType.folder.conforms(to: picker))
     }
 
-    @Test func thePickerDimsEveryOtherKindOfFile() {
-        let picker = InstallRefusal.pickerType
-        for name in ["a.apks", "a.apkm", "a.zip", "a.txt", "a.jar", "a.ipa", "a.json", "a.pdf", "a.png"] {
-            #expect(type(of: name)?.conforms(to: picker) != true, "\(name)")
-        }
-        // A file with no extension has no type to match, and the two plain
-        // types do not conform to the apk type.
-        #expect(type(of: "noextension") == nil)
-        #expect(!UTType.data.conforms(to: picker) && !UTType.item.conforms(to: picker))
-    }
-
-    @Test func theFilterAndTheRefusalAgreeOnWhatIsAnApk() {
-        for name in ["a.apk", "A.APK", "my app.Apk"] {
-            #expect(InstallRefusal(fileName: name) == nil && type(of: name)?.conforms(to: InstallRefusal.pickerType) == true)
-        }
-        // A bundle that a newer system also calls an apk gets past the
-        // picker and is refused with its own words.
+    @Test func aBroadPickerStillRefusesNonApkNames() {
+        #expect(InstallRefusal(fileName: "app.apk") == nil)
+        #expect(InstallRefusal(fileName: "app.APK") == nil)
+        #expect(InstallRefusal(fileName: "app.apk.zip") == .notApk)
         #expect(InstallRefusal(fileName: "app.xapk") == .bundle)
     }
 }
