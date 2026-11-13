@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+workflows:
+  andarium-unsigned:
+    name: Andarium - Unsigned IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      xcode: latest
+    scripts:
+      - name: Check Apple build tools and install host tools
+        script: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          python3 - <<'PY'
+          import subprocess
+          version = subprocess.check_output(['xcodebuild', '-version'], text=True).split()[1]
+          if int(version.split('.')[0]) < 27:
+              raise SystemExit('Xcode 27 or newer is required. Select a compatible Codemagic image.')
+          PY
+          brew install cmake ninja make autoconf automake libtool gettext gperf groff pkg-config python@3.12
+          export PATH="$(brew --prefix python@3.12)/libexec/bin:$(brew --prefix gettext)/bin:$PATH"
+          echo "PATH=$PATH" >> "$CM_ENV"
+          python3 -m venv .build/gpu-tools-venv
+          .build/gpu-tools-venv/bin/pip install meson Mako PyYAML packaging
+          xcodebuild -downloadComponent MetalToolchain
+          # Dependency patch replay needs a Git identity; use the source commit's identity.
+          git config user.name "$(git log -1 --format=%an)"
+          git config user.email "$(git log -1 --format=%ae)"
+      - name: Download accepted kernel and Android system
+        script: |
+          set -euo pipefail
+          python3 scripts/codemagic-fetch-artifacts.py
+          python3 Andarium/scripts/stage-system-image.py
+      - name: Prepare verified dependency sources
+        script: |
+          set -euo pipefail
+          for product in apple-gpu-vulkan-experiment ios-network ios-storage ios-compression; do
+            sh dependencies/prepare.sh --product "$product"
+          done
+      - name: Build iOS dependency libraries
+        script: |
+          set -euo pipefail
+          sh dependencies/build-apple-gpu.sh --platform ios
+          sh dependencies/build-ios-network.sh --platform ios
+          sh dependencies/build-ios-storage.sh
+          sh dependencies/build-ios-zstd.sh
+      - name: Build and package Android runtime
+        script: |
+          set -euo pipefail
+          cmake --preset kernarium-ios-device-android
+          cmake --build --preset kernarium-ios-device-android --parallel 4
+          sh Kernarium/scripts/package-ios-frameworks.sh --runtimes android
+      - name: Build device application without signing
+        script: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild -project Andarium/Andarium.xcodeproj -scheme Andarium \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build \
+            2>&1 | tee build/xcodebuild.log
+      - name: Package unsigned IPA
+        script: |
+          set -euo pipefail
+          APP=build/DerivedData/Build/Products/Release-iphoneos/Andarium.app
+          test -d "$APP"
+          test -f "$APP/Info.plist"
+          mkdir -p build/ipa/Payload
+          ditto "$APP" build/ipa/Payload/Andarium.app
+          (cd build/ipa && /usr/bin/zip -qry ../Andarium-unsigned.ipa Payload)
+          unzip -tq build/Andarium-unsigned.ipa
+          shasum -a 256 build/Andarium-unsigned.ipa > build/Andarium-unsigned.ipa.sha256
+    artifacts:
+      - build/Andarium-unsigned.ipa
+      - build/Andarium-unsigned.ipa.sha256
+      - build/xcodebuild.log
