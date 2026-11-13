@@ -17,9 +17,8 @@ def descriptor(path, key):
     raise RuntimeError('Missing descriptor key: ' + key)
 
 def main():
-    with urllib.request.urlopen('https://api.github.com/repos/imxieyi/Kernarium/releases?per_page=100', timeout=60) as response:
-        releases = json.load(response)
-    assets = {a['name']: a for r in releases for a in r['assets']}
+    # Pinned release metadata avoids shared CI IP GitHub API rate limits.
+    assets = json.loads((ROOT / 'scripts/codemagic-artifacts.json').read_text())
     specs = [
         ('kernel/mainline-6.18/artifacts/accepted-android-4k.env', 'UML_KERNEL_ARTIFACT_DIRECTORY_NAME', '.build/kernel/artifacts'),
         ('android/lineage-24/metadata/accepted-release.env', 'LINEAGE24_ACCEPTED_DIRECTORY_NAME', '.build/android/releases'),
